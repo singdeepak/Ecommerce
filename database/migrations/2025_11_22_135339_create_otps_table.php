@@ -11,12 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('reviews', function (Blueprint $table) {
+        Schema::create('otps', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('product_id')->constrained('products')->onDelete('cascade');
-            $table->tinyInteger('rating')->unsigned();
-            $table->text('comment')->nullable();
+            $table->foreignId('user_id') 
+                  ->constrained('users')
+                  ->cascadeOnDelete();
+            $table->string('otp_code')->index();
+            $table->timestamp('expire_at');
             $table->timestamps();
         });
     }
@@ -26,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('reviews');
+        Schema::dropIfExists('otps');
     }
 };
