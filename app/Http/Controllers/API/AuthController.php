@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Models\Otp;
 use App\Models\User;
+use Illuminate\Http\Request;
 use App\Mail\OtpVerificationMail;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
@@ -45,7 +46,6 @@ class AuthController extends Controller
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error($e->getMessage());
             return response()->json([
                 'status' => 'Error',
                 'status_code' => 500,
@@ -54,38 +54,81 @@ class AuthController extends Controller
         }
     }
 
+    public function verifyOtp(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'otp_code' => 'required|digits:6',
+        ]);
 
-    // public function login(Request $request){
-    //     $credentials = $request->validate([
-    //         'email' => 'required|string|email',
-    //         'password' => 'required|string',
-    //     ]);
+        $user = User::find($request->user_id);
 
-    //     if (!Auth::attempt($credentials)) {
-    //         return response()->json(['message' => 'Invalid credentials'], 401);
-    //     }
+        $otpRecord = Otp::where('user_id', $user->id)
+            ->latest()
+            ->first();
 
-    //     $user = Auth::user();
+        if (!$otpRecord) {
+            return response()->json(['status' => 'Error', 'message' => 'OTP record not found for this user.'], 404);
+        }
 
-    //     $token = $user->createToken('auth_token')->plainTextToken;
+        if ($otpRecord->expire_at < now()) {
+            $otpRecord->delete();
+            return response()->json(['status' => 'Error', 'message' => 'OTP has expired. Please request a new one.'], 401);
+        }
 
-    //     return response()->json([
-    //         'message' => 'Login successful',
-    //         'user' => $user,
-    //         'token' => $token,
-    //     ]);
-    // }
+        if (!Hash::check($request->otp_code, $otpRecord->otp_code)) {
+            return response()->json(['status' => 'Error', 'message' => 'Invalid OTP code provided.'], 401);
+        }
+
+        $user->update(['email_verified_at' => now()]);
+        $otpRecord->delete();
+
+        return response()->json([
+            'status' => 'Success',
+            'status_code' => 200,
+            'message' => 'Email verified successfully!',
+            'user' => $user,
+        ], 200);
+    }
 
 
-    // public function verifyEmail(Request $request){
+    public function login(Request $request)
+    {
+        $credentials = $request->validate([
+            'email' => 'required|string|email',
+            'password' => 'required|string',
+        ]);
 
-    // }
+        if (!Auth::attempt($credentials)) {
+            return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        $user = Auth::user();
+
+        $token = $user->createToken($request->header('User-Agent') ?? 'Web Browser')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Login successful',
+            'user' => $user,
+            'token' => $token,
+        ]);
+    }
 
 
-    // public function logout(Request $request)
-    // {
-    //     $request->user()->currentAccessToken()->delete();
+    public function logout(Request $request)
+    {
+        if ($request->user()) {
+            $request->user()->currentAccessToken()->delete();
 
-    //     return response()->json(['message' => 'Logged out successfully']);
-    // }
+            return response()->json(
+                ['message' => 'Logged out successfully'],
+                200
+            );
+        }
+
+        return response()->json(
+            ['message' => 'No active session or token found'],
+            401 
+        );
+    }
 }
